@@ -1,10 +1,11 @@
 import numpy as np
 from scipy.ndimage import gaussian_filter
 
-try:
-    import cupy as cp
-except ImportError:
-    cp = None
+# try:
+#     import cupy as cp
+# except ImportError:
+#     cp = None
+cp = None
 
 # Convention:
 #   a trailing underscore in a numpy array means it is

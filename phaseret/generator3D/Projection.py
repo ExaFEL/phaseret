@@ -51,7 +51,6 @@ class Molecule:
         #
         # Element and chemical symbol both refer to the corresponding entry in the
         # periodic table.
-        fname = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'wangzy', fname)
         f = open(fname)
         content = f.readlines()
         f.close()
@@ -97,7 +96,6 @@ class ScatterFactor(object):
         self.b = []
         self.c = []
 
-        sffile = os.path.join(os.path.dirname(__file__), '..', '..', 'data', 'wangzy', sffile)
         data = np.loadtxt(sffile, delimiter=None, comments='#', dtype="|S15,f8,f8,f8,f8,f8,f8,f8,f8,f8")
         for n in range(len(data)):
             self.label.append(data[n][0].decode())
@@ -178,11 +176,12 @@ def structure_factor(f, R, HKL):
     return F
 
 
-def moltrans(mol, H, K, L):
+def moltrans(mol, H, K, L, atomsf_fn):
     """
     Input:
     mol: Molecule class object
     H,K,L: meshgrid contains all the points in Fourier space to be calculated (must be matrix of the same size)
+    atomsf_fn: path to the atomsf file.
 
     Output:
     Molecular transform in Fourier space, same size as H, K and L
@@ -196,7 +195,7 @@ def moltrans(mol, H, K, L):
 
     HKL = np.array([H, K, L])
 
-    sf = ScatterFactor('atomsf.lib')
+    sf = ScatterFactor(atomsf_fn)
     f = scattering_factor(mol.element, HKL, sf)
     f = np.multiply(f, debye_waller_factor(mol.IDP, HKL))
     F = structure_factor(f, mol.crd, HKL)
