@@ -67,12 +67,14 @@ class InitialState:
         intensities_ = self._amplitudes_ ** 2
         intensities_[np.isnan(intensities_)] = 0
         autocorrelation_ = np.absolute(np.fft.fftn(intensities_))
-        self._support_ = \
+        support_ = \
             autocorrelation_ > rel_threshold * autocorrelation_.max()
+        np.copyto(self._support_, support_)
 
     def generate_random_rho(self):
         support = self.get_support(ifftshifted=True)  # In case it's None
-        self._rho_ = support * np.random.rand(*support.shape)
+        rho_ = support * np.random.rand(*support.shape)
+        np.copyto(self._rho_, rho_)
 
     def get_amplitudes(self, ifftshifted=False):
         shift = np.fft.fftshift if not ifftshifted else lambda x: x
@@ -145,12 +147,14 @@ class Phaser:
 
     def ER(self):
         rho_mod_, support_star_ = self._phase()
-        self._rho_ = self._xp.where(support_star_, rho_mod_, 0)
+        rho_ = self._xp.where(support_star_, rho_mod_, 0)
+        np.copyto(self._rho_, rho_)
 
     def HIO(self, beta):
         rho_mod_, support_star_ = self._phase()
-        self._rho_ = self._xp.where(support_star_, rho_mod_,
-                                    self._rho_-beta*rho_mod_)
+        rho_ = self._xp.where(support_star_, rho_mod_,
+                              self._rho_-beta*rho_mod_)
+        np.copyto(self._rho_, rho_)
 
     def _phase(self):
         if self._monitor:
@@ -201,7 +205,8 @@ class Phaser:
         rho_gauss_ = gaussian_filter(
             rho_abs_, mode='wrap', sigma=sigma, truncate=2)
         support_new_ = rho_gauss_ > rho_abs_.max() * cutoff
-        self._support_ = self._xp.asarray(support_new_, dtype=np.bool_)
+        support_ = self._xp.asarray(support_new_, dtype=np.bool_)
+        np.copyto(self._support_, support_)
 
     def get_support_sizes(self):
         return np.array(self._suppS_l)
