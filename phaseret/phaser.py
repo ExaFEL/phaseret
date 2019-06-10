@@ -218,21 +218,18 @@ class Phaser:
     def get_real_errs(self):
         return np.array(self._distR_l)
 
-    def get_support(self, ifftshifted=False):
-        shift = np.fft.fftshift if not ifftshifted else lambda x: x
-        if self._is_gpu:
-            support_ = cp.asnumpy(self._support_)
-        else:
-            support_ = self._support_
-        return shift(support_)
+    def get_support(self, ifftshifted=False, cupy_ok=False):
+        return self._prepare_array(self._support_, ifftshifted, cupy_ok)
 
-    def get_rho(self, ifftshifted=False):
-        shift = np.fft.fftshift if not ifftshifted else lambda x: x
-        if self._is_gpu:
-            rho_ = cp.asnumpy(self._rho_)
-        else:
-            rho_ = self._rho_
-        return shift(rho_)
+    def get_rho(self, ifftshifted=False, cupy_ok=False):
+        return self._prepare_array(self._rho_, ifftshifted, cupy_ok)
+
+    def _prepare_array(self, array, ifftshifted, cupy_ok):
+        if not ifftshifted:
+            array = self._xp.fft.fftshift(array)
+        if self._is_gpu and not cupy_ok:
+            array = cp.asnumpy(array)
+        return array
 
 
 class GPUNotAvailabeError(Exception):
