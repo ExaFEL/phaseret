@@ -69,11 +69,15 @@ class InitialState:
         intensities_ = self._amplitudes_ ** 2
         intensities_[np.isnan(intensities_)] = 0
         autocorrelation_ = np.absolute(np.fft.fftn(intensities_))
+        if self._support_ is None:
+            self._support_ = np.zeros(self._shape, dtype=np.bool_)
         self._support_[:] = \
             autocorrelation_ > rel_threshold * autocorrelation_.max()
 
     def generate_random_rho(self):
         support = self.get_support(ifftshifted=True)  # In case it's None
+        if self._rho_ is None:
+            self._rho_ = np.zeros(self._shape, dtype=np.complex64)
         self._rho_[:] = support * np.random.rand(*support.shape)
 
     def get_amplitudes(self, ifftshifted=False):
