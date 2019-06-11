@@ -103,7 +103,7 @@ class Phaser:
     Convenience wrapper around phasing functions.
     """
 
-    def __init__(self, initial_state, device="auto", monitor=False):
+    def __init__(self, initial_state, device="auto", monitor="all"):
         """Initializes the Phaser.
 
         :param initial_state:
@@ -112,10 +112,26 @@ class Phaser:
             Target device.
             Acceptable values: "cpu", "gpu", or "auto" (default).
             If "auto", use "gpu" if available, "cpu" otherwise.
+        :param monitor:
+            Monitoring level.
+            Acceptable values: "all" (default), "none", "some".
+            If "all", monitoring is computed at each iteration.
+            If "none", monitoring is never computed.
+            If "some", monitoring is computed every 10 iterations,
+            plus the end of the loop.
+            If "last", monitoring is only computed at the end of the
+            loop.
         :return:
         """
+        device = device.lower()
+        monitor = monitor.lower()
+
         if device not in ("auto", "gpu", "cpu"):
             raise ValueError("Unknown device: {}".format(device))
+
+        if monitor not in ("all", "none", "some", "last"):
+            raise ValueError("Unknown monitoring requirement: {}"
+                             "".format(monitor))
 
         if device == "auto":
             device = "gpu" if cp else "cpu"
@@ -136,18 +152,33 @@ class Phaser:
         self._amp_mask_ = self._xp.isfinite(self._amplitudes_)
         self._n_values = self._amp_mask_.sum()
 
-        self._monitor = monitor
-        self._distF_l = []
-        self._distR_l = []
-        self._suppS_l = []
+        self._monitor = self._monitor_all = monitor == "all"
+        self._monitor_some = monitor == "some"
+        self._monitor_last = monitor in ("some", "last")
+        self._reciprocal_errs = []
+        self._real_errs = []
+        self._monitored_idx = []
+        self._support_sizes = []
+        self._support_sizes_idx = []
+        self._curr_idx = -1
 
     def ER_loop(self, n_loops):
         for k in range(n_loops):
+            self._switch_monitor(k, n_loops)
             self.ER()
 
     def HIO_loop(self, n_loops, beta):
         for k in range(n_loops):
+            self._switch_monitor(k, n_loops)
             self.HIO(beta)
+
+    def _switch_monitor(self, k, n_loops):
+        if not self._monitor_last:
+            return
+        if (self._monitor_some and k % 10 == 0) or k == n_loops-1:
+            self._monitor = True
+        else:
+            self._monitor = False
 
     def ER(self):
         rho_mod_, support_star_ = self._phase()
@@ -159,11 +190,13 @@ class Phaser:
                                     self._rho_-beta*rho_mod_)
 
     def _phase(self):
+        self._curr_idx += 1
         if self._monitor:
             self._monitor_support()
+            self._monitor_idx()
         rho_hat_ = self._xp.fft.fftn(self._rho_)
         if self._monitor:
-            self._monitor_Fourier(rho_hat_)
+            self._monitor_reciprocal(rho_hat_)
         phases_ = self._xp.angle(rho_hat_)
         rho_hat_mod_ = self._xp.where(
             self._amp_mask_,
@@ -175,13 +208,16 @@ class Phaser:
             self._monitor_real(rho_mod_, support_star_)
         return rho_mod_, support_star_
 
+    def _monitor_idx(self):
+        self._monitored_idx.append(self._curr_idx)
+
     def _monitor_support(self):
         size = self._support_.sum()
         if self._is_gpu:  # cupy's norm return a 0d array
             size = size.get()[()]
-        self._suppS_l.append(size)
+        self._support_sizes.append(size)
 
-    def _monitor_Fourier(self, rho_hat_):
+    def _monitor_reciprocal(self, rho_hat_):
         dist = (
             self._xp.linalg.norm(
                 (self._xp.absolute(rho_hat_)
@@ -189,13 +225,13 @@ class Phaser:
             / self._n_values)
         if self._is_gpu:  # cupy's norm return a 0d array
             dist = dist.get()[()]
-        self._distF_l.append(dist)
+        self._reciprocal_errs.append(dist)
 
     def _monitor_real(self, rho_mod_, support_star_):
         dist = self._xp.linalg.norm(rho_mod_[~support_star_])
         if self._is_gpu:  # cupy's norm return a 0d array
             dist = dist.get()[()]
-        self._distR_l.append(dist)
+        self._real_errs.append(dist)
 
     def shrink_wrap(self, cutoff, sigma=1):
         if self._is_gpu:
@@ -209,14 +245,17 @@ class Phaser:
         support_new_ = rho_gauss_ > rho_abs_.max() * cutoff
         self._support_[:] = self._xp.asarray(support_new_, dtype=np.bool_)
 
-    def get_support_sizes(self):
-        return np.array(self._suppS_l)
+    def get_monitored_idx(self):
+        return np.array(self._monitored_idx)
 
-    def get_Fourier_errs(self):
-        return np.array(self._distF_l)
+    def get_support_sizes(self):
+        return np.array(self._support_sizes)
+
+    def get_reciprocal_errs(self):
+        return np.array(self._reciprocal_errs)
 
     def get_real_errs(self):
-        return np.array(self._distR_l)
+        return np.array(self._real_errs)
 
     def get_support(self, ifftshifted=False, cupy_ok=False):
         return self._prepare_array(self._support_, ifftshifted, cupy_ok)
